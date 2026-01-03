@@ -30,7 +30,7 @@ async function sliceImage(file: File): Promise<SlicedSprite[]> {
             img.onload = async () => {
                 const tileSize = 32
                 const sprites: SlicedSprite[] = []
-                
+
                 const cols = Math.floor(img.width / tileSize)
                 const rows = Math.floor(img.height / tileSize)
 
@@ -123,13 +123,13 @@ export default function ImageSlicer() {
 
     const createGroup = () => {
         if (!newGroupName.trim()) return
-        
+
         const newGroup: SpriteGroup = {
             id: Date.now().toString(),
             name: newGroupName.trim(),
             sprites: []
         }
-        
+
         setGroups([...groups, newGroup])
         setNewGroupName('')
     }
@@ -156,17 +156,17 @@ export default function ImageSlicer() {
         if (selectedSprites.size === 0) return
 
         const spritesToAdd = sprites.filter(s => selectedSprites.has(s.hash))
-        
+
         // Add sprites to group
-        setGroups(groups.map(group => 
-            group.id === groupId 
+        setGroups(groups.map(group =>
+            group.id === groupId
                 ? { ...group, sprites: [...group.sprites, ...spritesToAdd] }
                 : group
         ))
 
         // Remove sprites from ungrouped list
         setSprites(sprites.filter(s => !selectedSprites.has(s.hash)))
-        
+
         // Clear selection
         setSelectedSprites(new Set())
     }
@@ -193,8 +193,8 @@ export default function ImageSlicer() {
             addSelectedToGroup(groupId)
         } else {
             // Add single sprite to group
-            setGroups(groups.map(group => 
-                group.id === groupId 
+            setGroups(groups.map(group =>
+                group.id === groupId
                     ? { ...group, sprites: [...group.sprites, draggedSprite] }
                     : group
             ))
@@ -202,14 +202,14 @@ export default function ImageSlicer() {
             // Remove sprite from ungrouped list
             setSprites(sprites.filter(s => s.hash !== draggedSprite.hash))
         }
-        
+
         setDraggedSprite(null)
     }
 
     const removeSpriteFromGroup = (groupId: string, sprite: SlicedSprite) => {
         // Remove from group
-        setGroups(groups.map(group => 
-            group.id === groupId 
+        setGroups(groups.map(group =>
+            group.id === groupId
                 ? { ...group, sprites: group.sprites.filter(s => s.hash !== sprite.hash) }
                 : group
         ))
@@ -224,10 +224,10 @@ export default function ImageSlicer() {
 
         // Return all sprites from group to ungrouped list
         setSprites([...sprites, ...group.sprites])
-        
+
         // Remove group
         setGroups(groups.filter(g => g.id !== groupId))
-        
+
         // Remove from collapsed set if it was collapsed
         const newCollapsed = new Set(collapsedGroups)
         newCollapsed.delete(groupId)
@@ -263,7 +263,7 @@ export default function ImageSlicer() {
                     onChange={handleFileSelect}
                     style={{ display: 'none' }}
                 />
-                <button 
+                <button
                     className="btn btn-primary"
                     onClick={() => fileInputRef.current?.click()}
                 >
@@ -271,7 +271,7 @@ export default function ImageSlicer() {
                 </button>
                 {fileName && <span className="file-name">Selected: {fileName}</span>}
                 {sprites.length > 0 && (
-                    <button 
+                    <button
                         className="btn btn-secondary"
                         onClick={downloadAll}
                     >
@@ -299,14 +299,14 @@ export default function ImageSlicer() {
                                                 {selectedSprites.size} selected
                                             </span>
                                         )}
-                                        <button 
+                                        <button
                                             className="btn-small"
                                             onClick={selectAll}
                                         >
                                             Select All
                                         </button>
                                         {selectedSprites.size > 0 && (
-                                            <button 
+                                            <button
                                                 className="btn-small"
                                                 onClick={deselectAll}
                                             >
@@ -318,8 +318,8 @@ export default function ImageSlicer() {
                             </div>
                             <div className="sprite-grid">
                                 {ungroupedSprites.map((sprite, index) => (
-                                    <div 
-                                        key={sprite.hash} 
+                                    <div
+                                        key={sprite.hash}
                                         className={`sprite-item draggable ${selectedSprites.has(sprite.hash) ? 'selected' : ''}`}
                                         draggable
                                         onDragStart={() => handleDragStart(sprite)}
@@ -333,7 +333,7 @@ export default function ImageSlicer() {
                                             <div className="sprite-position">
                                                 ({sprite.x}, {sprite.y})
                                             </div>
-                                            <button 
+                                            <button
                                                 className="btn-download"
                                                 onClick={(e) => {
                                                     e.stopPropagation()
@@ -362,7 +362,7 @@ export default function ImageSlicer() {
                                     onKeyPress={(e) => e.key === 'Enter' && createGroup()}
                                     className="group-name-input"
                                 />
-                                <button 
+                                <button
                                     className="btn btn-primary"
                                     onClick={createGroup}
                                     disabled={!newGroupName.trim()}
@@ -378,8 +378,8 @@ export default function ImageSlicer() {
                                 {groups.map(group => {
                                     const isCollapsed = collapsedGroups.has(group.id)
                                     return (
-                                        <div 
-                                            key={group.id} 
+                                        <div
+                                            key={group.id}
                                             className="sprite-group"
                                             onDragOver={handleDragOver}
                                             onDrop={() => handleDropOnGroup(group.id)}
@@ -431,7 +431,7 @@ export default function ImageSlicer() {
                                                                     <div className="sprite-hash" title={sprite.hash}>
                                                                         {sprite.hash.substring(0, 8)}...
                                                                     </div>
-                                                                    <button 
+                                                                    <button
                                                                         className="btn-remove"
                                                                         onClick={() => removeSpriteFromGroup(group.id, sprite)}
                                                                         title="Remove from group"
