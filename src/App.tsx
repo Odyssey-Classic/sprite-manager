@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react'
 import TitleBar from './components/TitleBar'
 import Breadcrumbs from './components/Breadcrumbs'
 import Dashboard, { type ModuleType } from './components/Dashboard'
+import { ImageSlicerModule } from './modules/image-slicer'
 import { SpritesModule } from './modules/sprites'
 import { SpritesheetsModule } from './modules/spritesheets'
 import { TitleBarProvider } from './contexts/TitleBarContext'
@@ -9,8 +10,8 @@ import { NavigationProvider } from './contexts/NavigationContext'
 
 function getModuleFromPath(): ModuleType {
     const path = window.location.pathname
+    if (path.startsWith('/image-slicer')) return 'image-slicer'
     if (path.startsWith('/sprites')) return 'sprites'
-    if (path.startsWith('/animations')) return 'animations'
     if (path.startsWith('/spritesheets')) return 'spritesheets'
     return 'dashboard'
 }
@@ -41,6 +42,8 @@ export default function App() {
 
     const renderModule = () => {
         switch (currentModule) {
+            case 'image-slicer':
+                return <ImageSlicerModule />
             case 'sprites':
                 return <SpritesModule />
             case 'spritesheets':

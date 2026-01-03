@@ -1,7 +1,7 @@
 import React, { useEffect } from 'react'
 import { useTitleBar } from '../contexts/TitleBarContext'
 
-export type ModuleType = 'dashboard' | 'sprites' | 'animations' | 'spritesheets'
+export type ModuleType = 'dashboard' | 'image-slicer' | 'sprites' | 'spritesheets'
 
 interface ModuleTileProps {
     title: string
@@ -36,6 +36,12 @@ export default function Dashboard({ onNavigate }: DashboardProps) {
     }, [setTitle, setMenuItems, setBreadcrumbs])
 
     const modules = [
+        {
+            id: 'image-slicer' as ModuleType,
+            title: 'Image Slicer',
+            description: 'Slice PNG images into 32x32 sprites',
+            icon: '✂️'
+        },
         {
             id: 'sprites' as ModuleType,
             title: 'Sprites',

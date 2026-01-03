@@ -9,7 +9,24 @@
         "skipLibCheck": true,
         "forceConsistentCasingInFileNames": true,
         "baseUrl": ".",
-        "resolveJsonModule": true
+        "resolveJsonModule": true,
+        "paths": {
+            "@/*": [
+                "./src/*"
+            ],
+            "@components/*": [
+                "./src/components/*"
+            ],
+            "@contexts/*": [
+                "./src/contexts/*"
+            ],
+            "@modules/*": [
+                "./src/modules/*"
+            ],
+            "@styles/*": [
+                "./src/styles/*"
+            ],
+        }
     },
     "include": [
         "src"
