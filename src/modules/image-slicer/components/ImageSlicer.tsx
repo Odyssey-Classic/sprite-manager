@@ -1,4 +1,5 @@
-import React, { useState, useRef } from 'react'
+import React, { useState, useRef, useMemo } from 'react'
+import JSZip from 'jszip'
 
 interface SlicedSprite {
     hash: string
@@ -80,6 +81,7 @@ export default function ImageSlicer() {
     const [sprites, setSprites] = useState<SlicedSprite[]>([])
     const [loading, setLoading] = useState(false)
     const [fileName, setFileName] = useState<string>('')
+    const [originalImage, setOriginalImage] = useState<string>('')
     const [groups, setGroups] = useState<SpriteGroup[]>([])
     const [newGroupName, setNewGroupName] = useState('')
     const [selectedSprites, setSelectedSprites] = useState<Set<string>>(new Set())
@@ -96,6 +98,13 @@ export default function ImageSlicer() {
         setSprites([])
 
         try {
+            // Store original image as data URL
+            const reader = new FileReader()
+            reader.onload = (e) => {
+                setOriginalImage(e.target?.result as string)
+            }
+            reader.readAsDataURL(file)
+
             const slicedSprites = await sliceImage(file)
             setSprites(slicedSprites)
         } catch (error) {
@@ -119,6 +128,54 @@ export default function ImageSlicer() {
                 downloadSprite(sprite, index)
             }, index * 100) // Stagger downloads slightly
         })
+    }
+
+    const downloadZip = async () => {
+        const zip = new JSZip()
+
+        // Helper function to convert data URL to blob
+        const dataURLtoBlob = (dataUrl: string): Blob => {
+            const arr = dataUrl.split(',')
+            const mime = arr[0].match(/:(.*?);/)![1]
+            const bstr = atob(arr[1])
+            let n = bstr.length
+            const u8arr = new Uint8Array(n)
+            while (n--) {
+                u8arr[n] = bstr.charCodeAt(n)
+            }
+            return new Blob([u8arr], { type: mime })
+        }
+
+        // Add original image
+        if (originalImage) {
+            const blob = dataURLtoBlob(originalImage)
+            zip.file('original.png', blob)
+        }
+
+        // Add ungrouped sprites to root
+        ungroupedSprites.forEach(sprite => {
+            const blob = dataURLtoBlob(sprite.dataUrl)
+            zip.file(`${sprite.hash}.png`, blob)
+        })
+
+        // Add grouped sprites in subfolders
+        groups.forEach(group => {
+            const folder = zip.folder(group.name)
+            if (folder) {
+                group.sprites.forEach(sprite => {
+                    const blob = dataURLtoBlob(sprite.dataUrl)
+                    folder.file(`${sprite.hash}.png`, blob)
+                })
+            }
+        })
+
+        // Generate and download zip
+        const content = await zip.generateAsync({ type: 'blob' })
+        const link = document.createElement('a')
+        link.href = URL.createObjectURL(content)
+        link.download = `sprites_${fileName.replace('.png', '')}.zip`
+        link.click()
+        URL.revokeObjectURL(link.href)
     }
 
     const createGroup = () => {
@@ -244,14 +301,20 @@ export default function ImageSlicer() {
         setCollapsedGroups(newCollapsed)
     }
 
-    const getUngroupedSprites = () => {
+    const ungroupedSprites = useMemo(() => {
         const groupedHashes = new Set(
             groups.flatMap(g => g.sprites.map(s => s.hash))
         )
-        return sprites.filter(s => !groupedHashes.has(s.hash))
-    }
-
-    const ungroupedSprites = getUngroupedSprites()
+        return sprites
+            .filter(s => !groupedHashes.has(s.hash))
+            .sort((a, b) => {
+                // Sort by Y position first (top to bottom), then X position (left to right)
+                if (a.y !== b.y) {
+                    return a.y - b.y
+                }
+                return a.x - b.x
+            })
+    }, [sprites, groups])
 
     return (
         <div className="image-slicer">
@@ -271,12 +334,20 @@ export default function ImageSlicer() {
                 </button>
                 {fileName && <span className="file-name">Selected: {fileName}</span>}
                 {sprites.length > 0 && (
-                    <button
-                        className="btn btn-secondary"
-                        onClick={downloadAll}
-                    >
-                        Download All ({sprites.length} sprites)
-                    </button>
+                    <>
+                        <button
+                            className="btn btn-success"
+                            onClick={downloadZip}
+                        >
+                            📦 Download ZIP
+                        </button>
+                        <button
+                            className="btn btn-secondary"
+                            onClick={downloadAll}
+                        >
+                            Download All ({sprites.length} sprites)
+                        </button>
+                    </>
                 )}
             </div>
 
