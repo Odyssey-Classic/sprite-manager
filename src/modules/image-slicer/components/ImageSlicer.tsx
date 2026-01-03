@@ -106,7 +106,16 @@ export default function ImageSlicer() {
             reader.readAsDataURL(file)
 
             const slicedSprites = await sliceImage(file)
-            setSprites(slicedSprites)
+
+            // Remove duplicates based on hash, keeping the first occurrence
+            const uniqueSprites = slicedSprites.reduce((acc, sprite) => {
+                if (!acc.some(s => s.hash === sprite.hash)) {
+                    acc.push(sprite)
+                }
+                return acc
+            }, [] as SlicedSprite[])
+
+            setSprites(uniqueSprites)
         } catch (error) {
             console.error('Error slicing image:', error)
             alert('Failed to slice image. Please ensure it is a valid PNG file.')
@@ -397,24 +406,14 @@ export default function ImageSlicer() {
                                         onClick={() => toggleSpriteSelection(sprite.hash)}
                                     >
                                         <img src={sprite.dataUrl} alt={`Sprite ${index}`} />
-                                        <div className="sprite-info">
+                                        {/* <div className="sprite-info">
                                             <div className="sprite-hash" title={sprite.hash}>
                                                 {sprite.hash.substring(0, 8)}...
                                             </div>
                                             <div className="sprite-position">
                                                 ({sprite.x}, {sprite.y})
                                             </div>
-                                            <button
-                                                className="btn-download"
-                                                onClick={(e) => {
-                                                    e.stopPropagation()
-                                                    downloadSprite(sprite, index)
-                                                }}
-                                                title="Download this sprite"
-                                            >
-                                                ⬇
-                                            </button>
-                                        </div>
+                                        </div> */}
                                     </div>
                                 ))}
                             </div>

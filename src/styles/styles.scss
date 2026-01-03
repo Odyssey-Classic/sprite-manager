@@ -430,8 +430,8 @@ body {
 
 .sprite-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
-    gap: 16px;
+    grid-template-columns: repeat(auto-fill, minmax(60px, 1fr));
+    gap: 4px;
     overflow-y: scroll;
     padding: 4px;
     flex: 1;
@@ -447,6 +447,7 @@ body {
     display: flex;
     flex-direction: column;
     align-items: center;
+    vertical-align: middle;
     transition: all 0.2s;
 
     &:hover {
@@ -457,6 +458,7 @@ body {
     img {
         width: 32px;
         height: 32px;
+        margin: 0px;
         image-rendering: pixelated;
         image-rendering: crisp-edges;
         border: 1px solid #ddd;
