@@ -701,32 +701,30 @@ body {
     padding: 4px 8px;
     cursor: pointer;
     font-size: 14px;
-
-
-    .btn-collapse {
-        background: transparent;
-        border: none;
-        color: #b0b0b0;
-        cursor: pointer;
-        font-size: 14px;
-        padding: 4px 8px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        transition: all 0.2s;
-
-        &:hover {
-            color: #4da6ff;
-            background: #2a2d2e;
-            border-radius: 4px;
-        }
-    }
-
     font-weight: bold;
     transition: all 0.2s;
 
     &:hover {
         background: #c82333;
+    }
+}
+
+.btn-collapse {
+    background: transparent;
+    border: none;
+    color: #b0b0b0;
+    cursor: pointer;
+    font-size: 14px;
+    padding: 4px 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s;
+
+    &:hover {
+        color: #4da6ff;
+        background: #2a2d2e;
+        border-radius: 4px;
     }
 }
 
