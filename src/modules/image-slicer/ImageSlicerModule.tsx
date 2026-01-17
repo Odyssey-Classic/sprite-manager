@@ -17,9 +17,6 @@ export default function ImageSlicerModule() {
 
     return (
         <div className="module-container">
-            <div className="module-header">
-                <h1>Image Slicer</h1>
-            </div>
             <div className="module-content">
                 <ImageSlicer />
             </div>

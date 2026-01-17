@@ -2,7 +2,7 @@
 
 ## User Story
 
-As a user, I want to be able to open a PNG file and slice it into individual sprite tiles.
+As a user, I want to be able to open a PNG file and slice it into individual sprite tiles, then export selected sprites as a packed sprite sheet with metadata.
 
 ## Requirements
 
@@ -26,27 +26,33 @@ As a user, I want to be able to open a PNG file and slice it into individual spr
 - Encoding: Standard PNG with full alpha transparency support
 - Each sprite tile remains 32×32 pixels
 
-### Output Files
-- Each sprite saved as individual PNG file
-- Filename format: `sprite_{hash_prefix}.png` where hash_prefix is first 8 characters of SHA-256 hash
-- Support downloading individual sprites
-- Support bulk download of all sprites
+### Export
+- Export selected sprites as a packed sprite sheet (single PNG image)
+- Include JSON metadata with sprite positions and information
+- Package as ZIP file containing:
+  - `spritesheet.png` - Packed sprite sheet with selected sprites
+  - `metadata.json` - JSON file with sprite layout and references
+  - `original.png` - Original source image for reference
 
 ## User Interface
 
 ### Controls
 - "Select PNG File" button to open file picker
 - Display selected filename
-- "Download All" button (shown after slicing) to download all sprites
+- "Export Sprite Sheet" button (shown when sprites are selected)
 
 ### Display
 - Show all sliced sprites in a responsive grid
 - Each sprite tile displays:
   - Visual preview at actual size (32×32)
   - Checkerboard background to show transparency
-  - Hash value (first 8 chars visible, full hash on hover)
+  - Hash value (first 8 chars visible)
   - Original position coordinates (x, y)
-  - Individual download button
+
+### Selection & Ordering
+- Select sprites to include in export
+- Reorder selected sprites by dragging
+- Order is preserved in the packed sprite sheet
 
 ### Visual Treatment
 - Use `image-rendering: pixelated` to maintain pixel-perfect rendering

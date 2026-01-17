@@ -1,5 +1,9 @@
-import React, { useState, useRef, useMemo } from 'react'
+import React, { useState, useMemo } from 'react'
 import JSZip from 'jszip'
+import { FileUpload } from './FileUpload'
+import { SpriteGrid } from './SpriteGrid'
+import { SelectedSpritesPanel } from './SelectedSpritesPanel'
+import { ActionButtons } from './ActionButtons'
 
 interface SlicedSprite {
     hash: string
@@ -8,11 +12,7 @@ interface SlicedSprite {
     y: number
 }
 
-interface SpriteGroup {
-    id: string
-    name: string
-    sprites: SlicedSprite[]
-}
+
 
 async function hashImageData(imageData: ImageData): Promise<string> {
     // Convert image data to string for hashing
@@ -40,7 +40,9 @@ async function sliceImage(file: File): Promise<SlicedSprite[]> {
                         const canvas = document.createElement('canvas')
                         canvas.width = tileSize
                         canvas.height = tileSize
-                        const ctx = canvas.getContext('2d')!
+                        const ctx = canvas.getContext('2d')
+
+                        if (!ctx) continue
 
                         // Draw the slice
                         ctx.drawImage(
@@ -96,24 +98,17 @@ async function sliceImage(file: File): Promise<SlicedSprite[]> {
 }
 
 export default function ImageSlicer() {
-    const [sprites, setSprites] = useState<SlicedSprite[]>([])
+    const [allSprites, setAllSprites] = useState<SlicedSprite[]>([])
     const [loading, setLoading] = useState(false)
     const [fileName, setFileName] = useState<string>('')
     const [originalImage, setOriginalImage] = useState<string>('')
-    const [groups, setGroups] = useState<SpriteGroup[]>([])
-    const [newGroupName, setNewGroupName] = useState('')
-    const [selectedSprites, setSelectedSprites] = useState<Set<string>>(new Set())
-    const [draggedSprite, setDraggedSprite] = useState<SlicedSprite | null>(null)
-    const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set())
-    const fileInputRef = useRef<HTMLInputElement>(null)
+    const [selectedSprites, setSelectedSprites] = useState<SlicedSprite[]>([])
+    const [tempSelection, setTempSelection] = useState<Set<string>>(new Set())
 
-    const handleFileSelect = async (event: React.ChangeEvent<HTMLInputElement>) => {
-        const file = event.target.files?.[0]
-        if (!file) return
-
+    const handleFileSelect = async (file: File) => {
         setFileName(file.name)
         setLoading(true)
-        setSprites([])
+        setAllSprites([])
 
         try {
             // Store original image as data URL
@@ -133,7 +128,9 @@ export default function ImageSlicer() {
                 return acc
             }, [] as SlicedSprite[])
 
-            setSprites(uniqueSprites)
+            setAllSprites(uniqueSprites)
+            setSelectedSprites([])
+            setTempSelection(new Set())
         } catch (error) {
             console.error('Error slicing image:', error)
             alert('Failed to slice image. Please ensure it is a valid PNG file.')
@@ -142,198 +139,148 @@ export default function ImageSlicer() {
         }
     }
 
-    const downloadSprite = (sprite: SlicedSprite, index: number) => {
-        const link = document.createElement('a')
-        link.download = `sprite_${sprite.hash.substring(0, 8)}.png`
-        link.href = sprite.dataUrl
-        link.click()
-    }
+    const exportSpriteSheet = async () => {
+        if (selectedSprites.length === 0) {
+            alert('Please select at least one sprite to export')
+            return
+        }
 
-    const downloadAll = () => {
-        sprites.forEach((sprite, index) => {
-            setTimeout(() => {
-                downloadSprite(sprite, index)
-            }, index * 100) // Stagger downloads slightly
-        })
-    }
-
-    const downloadZip = async () => {
         const zip = new JSZip()
+        const tileSize = 32
 
-        // Helper function to convert data URL to blob
-        const dataURLtoBlob = (dataUrl: string): Blob => {
-            const arr = dataUrl.split(',')
-            const mime = arr[0].match(/:(.*?);/)![1]
+        // Create packed sprite sheet
+        const cols = Math.ceil(Math.sqrt(selectedSprites.length))
+        const rows = Math.ceil(selectedSprites.length / cols)
+
+        const canvas = document.createElement('canvas')
+        canvas.width = cols * tileSize
+        canvas.height = rows * tileSize
+        const ctx = canvas.getContext('2d')
+
+        if (!ctx) {
+            alert('Failed to create canvas context')
+            return
+        }
+
+        // JSON metadata
+        const metadata = {
+            tileSize: tileSize,
+            width: canvas.width,
+            height: canvas.height,
+            cols: cols,
+            rows: rows,
+            sprites: [] as any[]
+        }
+
+        // Draw sprites onto packed sheet and build metadata
+        for (let i = 0; i < selectedSprites.length; i++) {
+            const sprite = selectedSprites[i]
+            const col = i % cols
+            const row = Math.floor(i / cols)
+            const x = col * tileSize
+            const y = row * tileSize
+
+            // Load sprite image and draw it
+            const img = new Image()
+            await new Promise((resolve, reject) => {
+                img.onload = resolve
+                img.onerror = reject
+                img.src = sprite.dataUrl
+            })
+
+            ctx.drawImage(img, x, y)
+
+            // Add metadata entry
+            metadata.sprites.push({
+                index: i,
+                hash: sprite.hash,
+                sourceX: sprite.x,
+                sourceY: sprite.y,
+                sheetX: x,
+                sheetY: y,
+                width: tileSize,
+                height: tileSize
+            })
+        }
+
+        // Convert canvas to blob
+        const spriteSheetBlob = await new Promise<Blob>((resolve) => {
+            canvas.toBlob((blob) => resolve(blob!), 'image/png')
+        })
+
+        // Add files to ZIP
+        zip.file('spritesheet.png', spriteSheetBlob)
+        zip.file('metadata.json', JSON.stringify(metadata, null, 2))
+
+        if (originalImage) {
+            const arr = originalImage.split(',')
+            const mime = arr[0].match(/:(.*?);/)?.[1] || ''
             const bstr = atob(arr[1])
             let n = bstr.length
             const u8arr = new Uint8Array(n)
             while (n--) {
                 u8arr[n] = bstr.charCodeAt(n)
             }
-            return new Blob([u8arr], { type: mime })
-        }
-
-        // Add original image
-        if (originalImage) {
-            const blob = dataURLtoBlob(originalImage)
+            const blob = new Blob([u8arr], { type: mime })
             zip.file('original.png', blob)
         }
 
-        // Add ungrouped sprites to root
-        ungroupedSprites.forEach(sprite => {
-            const blob = dataURLtoBlob(sprite.dataUrl)
-            zip.file(`${sprite.hash}.png`, blob)
-        })
-
-        // Add grouped sprites in subfolders
-        groups.forEach(group => {
-            const folder = zip.folder(group.name)
-            if (folder) {
-                group.sprites.forEach(sprite => {
-                    const blob = dataURLtoBlob(sprite.dataUrl)
-                    folder.file(`${sprite.hash}.png`, blob)
-                })
-            }
-        })
-
-        // Generate and download zip
+        // Generate and download
         const content = await zip.generateAsync({ type: 'blob' })
         const link = document.createElement('a')
         link.href = URL.createObjectURL(content)
-        link.download = `sprites_${fileName.replace('.png', '')}.zip`
+        link.download = `spritesheet_${fileName.replace('.png', '')}.zip`
         link.click()
         URL.revokeObjectURL(link.href)
     }
 
-    const createGroup = () => {
-        if (!newGroupName.trim()) return
-
-        const newGroup: SpriteGroup = {
-            id: Date.now().toString(),
-            name: newGroupName.trim(),
-            sprites: []
-        }
-
-        setGroups([...groups, newGroup])
-        setNewGroupName('')
-    }
-
-    const toggleSpriteSelection = (hash: string) => {
-        const newSelection = new Set(selectedSprites)
+    const toggleTempSelection = (hash: string) => {
+        const newSelection = new Set(tempSelection)
         if (newSelection.has(hash)) {
             newSelection.delete(hash)
         } else {
             newSelection.add(hash)
         }
-        setSelectedSprites(newSelection)
+        setTempSelection(newSelection)
     }
 
     const selectAll = () => {
-        setSelectedSprites(new Set(ungroupedSprites.map(s => s.hash)))
+        setTempSelection(new Set(unselectedSprites.map(s => s.hash)))
     }
 
     const deselectAll = () => {
-        setSelectedSprites(new Set())
+        setTempSelection(new Set())
     }
 
-    const addSelectedToGroup = (groupId: string) => {
-        if (selectedSprites.size === 0) return
+    const addToSelected = () => {
+        if (tempSelection.size === 0) return
 
-        const spritesToAdd = sprites.filter(s => selectedSprites.has(s.hash))
+        const spritesToAdd = allSprites.filter(s => tempSelection.has(s.hash))
 
-        // Add sprites to group
-        setGroups(groups.map(group =>
-            group.id === groupId
-                ? { ...group, sprites: [...group.sprites, ...spritesToAdd] }
-                : group
-        ))
+        // Add to selected list
+        setSelectedSprites([...selectedSprites, ...spritesToAdd])
 
-        // Remove sprites from ungrouped list
-        setSprites(sprites.filter(s => !selectedSprites.has(s.hash)))
-
-        // Clear selection
-        setSelectedSprites(new Set())
+        // Clear temp selection
+        setTempSelection(new Set())
     }
 
-    const handleDragStart = (sprite: SlicedSprite) => {
-        // If dragging a selected sprite, drag all selected
-        // Otherwise just drag the one sprite
-        if (selectedSprites.has(sprite.hash)) {
-            setDraggedSprite(sprite) // Use as a marker that we're dragging selection
-        } else {
-            setDraggedSprite(sprite)
-        }
+    const removeFromSelected = (hash: string) => {
+        setSelectedSprites(selectedSprites.filter(s => s.hash !== hash))
     }
 
-    const handleDragOver = (e: React.DragEvent) => {
-        e.preventDefault()
+    const reorderSelectedSprites = (reorderedSprites: SlicedSprite[]) => {
+        setSelectedSprites(reorderedSprites)
     }
 
-    const handleDropOnGroup = (groupId: string) => {
-        if (!draggedSprite) return
-
-        // If the dragged sprite is in selection, add all selected sprites
-        if (selectedSprites.has(draggedSprite.hash) && selectedSprites.size > 0) {
-            addSelectedToGroup(groupId)
-        } else {
-            // Add single sprite to group
-            setGroups(groups.map(group =>
-                group.id === groupId
-                    ? { ...group, sprites: [...group.sprites, draggedSprite] }
-                    : group
-            ))
-
-            // Remove sprite from ungrouped list
-            setSprites(sprites.filter(s => s.hash !== draggedSprite.hash))
-        }
-
-        setDraggedSprite(null)
+    const handleDragStart = (hash: string) => {
+        // Not used for unselected sprites anymore
     }
 
-    const removeSpriteFromGroup = (groupId: string, sprite: SlicedSprite) => {
-        // Remove from group
-        setGroups(groups.map(group =>
-            group.id === groupId
-                ? { ...group, sprites: group.sprites.filter(s => s.hash !== sprite.hash) }
-                : group
-        ))
-
-        // Add back to ungrouped list
-        setSprites([...sprites, sprite])
-    }
-
-    const deleteGroup = (groupId: string) => {
-        const group = groups.find(g => g.id === groupId)
-        if (!group) return
-
-        // Return all sprites from group to ungrouped list
-        setSprites([...sprites, ...group.sprites])
-
-        // Remove group
-        setGroups(groups.filter(g => g.id !== groupId))
-
-        // Remove from collapsed set if it was collapsed
-        const newCollapsed = new Set(collapsedGroups)
-        newCollapsed.delete(groupId)
-        setCollapsedGroups(newCollapsed)
-    }
-
-    const toggleGroupCollapse = (groupId: string) => {
-        const newCollapsed = new Set(collapsedGroups)
-        if (newCollapsed.has(groupId)) {
-            newCollapsed.delete(groupId)
-        } else {
-            newCollapsed.add(groupId)
-        }
-        setCollapsedGroups(newCollapsed)
-    }
-
-    const ungroupedSprites = useMemo(() => {
-        const groupedHashes = new Set(
-            groups.flatMap(g => g.sprites.map(s => s.hash))
-        )
-        return sprites
-            .filter(s => !groupedHashes.has(s.hash))
+    // Calculate unselected sprites
+    const unselectedSprites = useMemo(() => {
+        const selectedHashes = new Set(selectedSprites.map(s => s.hash))
+        return allSprites
+            .filter(s => !selectedHashes.has(s.hash))
             .sort((a, b) => {
                 // Sort by Y position first (top to bottom), then X position (left to right)
                 if (a.y !== b.y) {
@@ -341,200 +288,59 @@ export default function ImageSlicer() {
                 }
                 return a.x - b.x
             })
-    }, [sprites, groups])
+    }, [allSprites, selectedSprites])
 
     return (
         <div className="image-slicer">
-            <div className="slicer-controls">
-                <input
-                    ref={fileInputRef}
-                    type="file"
-                    accept="image/png"
-                    onChange={handleFileSelect}
-                    style={{ display: 'none' }}
-                />
-                <button
-                    className="btn btn-primary"
-                    onClick={() => fileInputRef.current?.click()}
-                >
-                    Select PNG File
-                </button>
-                {fileName && <span className="file-name">Selected: {fileName}</span>}
-                {sprites.length > 0 && (
-                    <>
-                        <button
-                            className="btn btn-success"
-                            onClick={downloadZip}
-                        >
-                            📦 Download ZIP
-                        </button>
-                        <button
-                            className="btn btn-secondary"
-                            onClick={downloadAll}
-                        >
-                            Download All ({sprites.length} sprites)
-                        </button>
-                    </>
-                )}
-            </div>
-
             {loading && (
                 <div className="loading-message">
                     Slicing image into 32x32 sprites...
                 </div>
             )}
 
-            {sprites.length > 0 && (
+            {allSprites.length === 0 ? (
+                <div className="file-upload-container">
+                    <FileUpload
+                        onFileSelect={handleFileSelect}
+                        hasFile={!!fileName}
+                    />
+                </div>
+            ) : (
                 <div className="grouping-section-two-column">
                     <div className="left-panel">
-                        <div className="sprite-results">
-                            <div className="results-header">
-                                <h3>Sliced Sprites ({ungroupedSprites.length} ungrouped, {sprites.length} total)</h3>
-                                {ungroupedSprites.length > 0 && (
-                                    <div className="selection-controls">
-                                        {selectedSprites.size > 0 && (
-                                            <span className="selection-count">
-                                                {selectedSprites.size} selected
-                                            </span>
-                                        )}
-                                        <button
-                                            className="btn-small"
-                                            onClick={selectAll}
-                                        >
-                                            Select All
-                                        </button>
-                                        {selectedSprites.size > 0 && (
-                                            <button
-                                                className="btn-small"
-                                                onClick={deselectAll}
-                                            >
-                                                Deselect All
-                                            </button>
-                                        )}
-                                    </div>
-                                )}
+                        <SpriteGrid
+                            title={`Unselected Sprites`}
+                            sprites={unselectedSprites}
+                            selectedHashes={tempSelection}
+                            onToggleSelection={toggleTempSelection}
+                            onSelectAll={selectAll}
+                            onDeselectAll={deselectAll}
+                            onDragStart={handleDragStart}
+                        />
+                        {tempSelection.size > 0 && (
+                            <div className="add-selected-section">
+                                <button
+                                    className="btn btn-primary"
+                                    onClick={addToSelected}
+                                >
+                                    Add to Selected ({tempSelection.size})
+                                </button>
                             </div>
-                            <div className="sprite-grid">
-                                {ungroupedSprites.map((sprite, index) => (
-                                    <div
-                                        key={sprite.hash}
-                                        className={`sprite-item draggable ${selectedSprites.has(sprite.hash) ? 'selected' : ''}`}
-                                        draggable
-                                        onDragStart={() => handleDragStart(sprite)}
-                                        onClick={() => toggleSpriteSelection(sprite.hash)}
-                                    >
-                                        <img src={sprite.dataUrl} alt={`Sprite ${index}`} />
-                                        {/* <div className="sprite-info">
-                                            <div className="sprite-hash" title={sprite.hash}>
-                                                {sprite.hash.substring(0, 8)}...
-                                            </div>
-                                            <div className="sprite-position">
-                                                ({sprite.x}, {sprite.y})
-                                            </div>
-                                        </div> */}
-                                    </div>
-                                ))}
-                            </div>
-                        </div>
+                        )}
                     </div>
 
                     <div className="right-panel">
-                        <div className="group-controls">
-                            <h3>Create Group</h3>
-                            <div className="create-group-form">
-                                <input
-                                    type="text"
-                                    placeholder="Group name..."
-                                    value={newGroupName}
-                                    onChange={(e) => setNewGroupName(e.target.value)}
-                                    onKeyPress={(e) => e.key === 'Enter' && createGroup()}
-                                    className="group-name-input"
+                        <SelectedSpritesPanel
+                            selectedSprites={selectedSprites}
+                            onReorderSprites={reorderSelectedSprites}
+                            onRemoveSprite={removeFromSelected}
+                        />
+                        {selectedSprites.length > 0 && (
+                            <div className="export-section">
+                                <ActionButtons
+                                    hasSprites={selectedSprites.length > 0}
+                                    onExport={exportSpriteSheet}
                                 />
-                                <button
-                                    className="btn btn-primary"
-                                    onClick={createGroup}
-                                    disabled={!newGroupName.trim()}
-                                >
-                                    Create Group
-                                </button>
-                            </div>
-                        </div>
-
-                        {groups.length > 0 && (
-                            <div className="sprite-groups">
-                                <h3>Groups ({groups.length})</h3>
-                                {groups.map(group => {
-                                    const isCollapsed = collapsedGroups.has(group.id)
-                                    return (
-                                        <div
-                                            key={group.id}
-                                            className="sprite-group"
-                                            onDragOver={handleDragOver}
-                                            onDrop={() => handleDropOnGroup(group.id)}
-                                        >
-                                            <div className="group-header">
-                                                <div className="group-header-left">
-                                                    <button
-                                                        className="btn-collapse"
-                                                        onClick={() => toggleGroupCollapse(group.id)}
-                                                        title={isCollapsed ? 'Expand group' : 'Collapse group'}
-                                                    >
-                                                        {isCollapsed ? '▶' : '▼'}
-                                                    </button>
-                                                    <h4>{group.name}</h4>
-                                                </div>
-                                                <div className="group-actions">
-                                                    {selectedSprites.size > 0 && (
-                                                        <button
-                                                            className="btn btn-primary btn-small"
-                                                            onClick={() => addSelectedToGroup(group.id)}
-                                                            title={`Add ${selectedSprites.size} selected sprite${selectedSprites.size !== 1 ? 's' : ''}`}
-                                                        >
-                                                            Add Selected ({selectedSprites.size})
-                                                        </button>
-                                                    )}
-                                                    <span className="group-count">
-                                                        {group.sprites.length} sprite{group.sprites.length !== 1 ? 's' : ''}
-                                                    </span>
-                                                    <button
-                                                        className="btn-delete"
-                                                        onClick={() => deleteGroup(group.id)}
-                                                        title="Delete group"
-                                                    >
-                                                        ✕
-                                                    </button>
-                                                </div>
-                                            </div>
-                                            {!isCollapsed && (
-                                                <div className="sprite-grid">
-                                                    {group.sprites.length === 0 ? (
-                                                        <div className="drop-zone-empty">
-                                                            Drag sprites here
-                                                        </div>
-                                                    ) : (
-                                                        group.sprites.map((sprite, index) => (
-                                                            <div key={sprite.hash} className="sprite-item">
-                                                                <img src={sprite.dataUrl} alt={`Sprite ${index}`} />
-                                                                <div className="sprite-info">
-                                                                    <div className="sprite-hash" title={sprite.hash}>
-                                                                        {sprite.hash.substring(0, 8)}...
-                                                                    </div>
-                                                                    <button
-                                                                        className="btn-remove"
-                                                                        onClick={() => removeSpriteFromGroup(group.id, sprite)}
-                                                                        title="Remove from group"
-                                                                    >
-                                                                        ↩
-                                                                    </button>
-                                                                </div>
-                                                            </div>
-                                                        ))
-                                                    )}
-                                                </div>
-                                            )}
-                                        </div>
-                                    )
-                                })}
                             </div>
                         )}
                     </div>
