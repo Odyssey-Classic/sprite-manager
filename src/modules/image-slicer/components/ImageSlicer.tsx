@@ -102,7 +102,7 @@ export default function ImageSlicer() {
     const [loading, setLoading] = useState(false)
     const [fileName, setFileName] = useState<string>('')
     const [originalImage, setOriginalImage] = useState<string>('')
-    const [selectedSprites, setSelectedSprites] = useState<SlicedSprite[]>([])
+    const [selectedSprites, setSelectedSprites] = useState<(SlicedSprite | null)[][]>([[]])
     const [tempSelection, setTempSelection] = useState<Set<string>>(new Set())
 
     const handleFileSelect = async (file: File) => {
@@ -129,7 +129,7 @@ export default function ImageSlicer() {
             }, [] as SlicedSprite[])
 
             setAllSprites(uniqueSprites)
-            setSelectedSprites([])
+            setSelectedSprites([[]])
             setTempSelection(new Set())
         } catch (error) {
             console.error('Error slicing image:', error)
@@ -140,7 +140,9 @@ export default function ImageSlicer() {
     }
 
     const exportSpriteSheet = async () => {
-        if (selectedSprites.length === 0) {
+        // Count actual sprites (non-null entries)
+        const spriteCount = selectedSprites.flat().filter(s => s !== null).length
+        if (spriteCount === 0) {
             alert('Please select at least one sprite to export')
             return
         }
@@ -148,9 +150,9 @@ export default function ImageSlicer() {
         const zip = new JSZip()
         const tileSize = 32
 
-        // Create packed sprite sheet
-        const cols = Math.ceil(Math.sqrt(selectedSprites.length))
-        const rows = Math.ceil(selectedSprites.length / cols)
+        // Calculate dimensions based on grid
+        const rows = selectedSprites.length
+        const cols = Math.max(...selectedSprites.map(row => row.length))
 
         const canvas = document.createElement('canvas')
         canvas.width = cols * tileSize
@@ -162,45 +164,65 @@ export default function ImageSlicer() {
             return
         }
 
-        // JSON metadata
-        const metadata = {
-            tileSize: tileSize,
-            width: canvas.width,
-            height: canvas.height,
-            cols: cols,
-            rows: rows,
-            sprites: [] as any[]
-        }
+        // Fill with transparent background
+        ctx.clearRect(0, 0, canvas.width, canvas.height)
+
+        // PixiJS spritesheet format
+        const frames: Record<string, any> = {}
 
         // Draw sprites onto packed sheet and build metadata
-        for (let i = 0; i < selectedSprites.length; i++) {
-            const sprite = selectedSprites[i]
-            const col = i % cols
-            const row = Math.floor(i / cols)
-            const x = col * tileSize
-            const y = row * tileSize
+        let spriteIndex = 0
+        for (let rowIdx = 0; rowIdx < selectedSprites.length; rowIdx++) {
+            const row = selectedSprites[rowIdx]
+            for (let colIdx = 0; colIdx < row.length; colIdx++) {
+                const sprite = row[colIdx]
+                if (!sprite) continue // Skip null entries
 
-            // Load sprite image and draw it
-            const img = new Image()
-            await new Promise((resolve, reject) => {
-                img.onload = resolve
-                img.onerror = reject
-                img.src = sprite.dataUrl
-            })
+                const x = colIdx * tileSize
+                const y = rowIdx * tileSize
 
-            ctx.drawImage(img, x, y)
+                // Load sprite image and draw it
+                const img = new Image()
+                await new Promise((resolve, reject) => {
+                    img.onload = resolve
+                    img.onerror = reject
+                    img.src = sprite.dataUrl
+                })
 
-            // Add metadata entry
-            metadata.sprites.push({
-                index: i,
-                hash: sprite.hash,
-                sourceX: sprite.x,
-                sourceY: sprite.y,
-                sheetX: x,
-                sheetY: y,
-                width: tileSize,
-                height: tileSize
-            })
+                ctx.drawImage(img, x, y)
+
+                // Add frame in PixiJS format
+                // Use full hash as frame name
+                frames[sprite.hash] = {
+                    frame: { x, y, w: tileSize, h: tileSize },
+                    sourceSize: { w: tileSize, h: tileSize },
+                    spriteSourceSize: { x: 0, y: 0, w: tileSize, h: tileSize },
+                    // Include original position for reference
+                    source: {
+                        x: sprite.x,
+                        y: sprite.y
+                    },
+                    // Include grid position for reference
+                    grid: {
+                        row: rowIdx,
+                        col: colIdx
+                    }
+                }
+                spriteIndex++
+            }
+        }
+
+        // Create PixiJS spritesheet JSON
+        const pixiJSON = {
+            frames,
+            meta: {
+                app: "Odyssey Sprite Manager",
+                version: "1.0",
+                image: "spritesheet.png",
+                format: "RGBA8888",
+                size: { w: canvas.width, h: canvas.height },
+                scale: 1
+            }
         }
 
         // Convert canvas to blob
@@ -210,7 +232,7 @@ export default function ImageSlicer() {
 
         // Add files to ZIP
         zip.file('spritesheet.png', spriteSheetBlob)
-        zip.file('metadata.json', JSON.stringify(metadata, null, 2))
+        zip.file('spritesheet.json', JSON.stringify(pixiJSON, null, 2))
 
         if (originalImage) {
             const arr = originalImage.split(',')
@@ -257,19 +279,57 @@ export default function ImageSlicer() {
 
         const spritesToAdd = allSprites.filter(s => tempSelection.has(s.hash))
 
-        // Add to selected list
-        setSelectedSprites([...selectedSprites, ...spritesToAdd])
+        const newGrid = [...selectedSprites]
+
+        // Calculate the maximum row width (widest existing row)
+        const maxRowWidth = Math.max(
+            ...newGrid.map(row => row.length),
+            0 // Default to 0 if no rows exist
+        )
+
+        // If grid is empty, start with a reasonable max width
+        const targetRowWidth = maxRowWidth > 0 ? maxRowWidth : 10
+
+        // Split sprites into new rows, respecting the max width
+        const spritesRemaining = [...spritesToAdd]
+        while (spritesRemaining.length > 0) {
+            const rowSprites = spritesRemaining.splice(0, targetRowWidth)
+            newGrid.push(rowSprites)
+        }
+
+        setSelectedSprites(newGrid)
 
         // Clear temp selection
         setTempSelection(new Set())
     }
 
     const removeFromSelected = (hash: string) => {
-        setSelectedSprites(selectedSprites.filter(s => s.hash !== hash))
+        const newGrid = selectedSprites.map(row =>
+            row.filter(s => s === null || s.hash !== hash)
+        ).filter(row => row.length > 0) // Remove empty rows
+
+        // Ensure at least one empty row exists
+        if (newGrid.length === 0) {
+            newGrid.push([])
+        }
+        setSelectedSprites(newGrid)
     }
 
-    const reorderSelectedSprites = (reorderedSprites: SlicedSprite[]) => {
-        setSelectedSprites(reorderedSprites)
+    const removeMultipleFromSelected = (hashes: string[]) => {
+        const hashSet = new Set(hashes)
+        const newGrid = selectedSprites.map(row =>
+            row.filter(s => s === null || !hashSet.has(s.hash))
+        ).filter(row => row.length > 0) // Remove empty rows
+
+        // Ensure at least one empty row exists
+        if (newGrid.length === 0) {
+            newGrid.push([])
+        }
+        setSelectedSprites(newGrid)
+    }
+
+    const reorderSelectedSprites = (newGrid: (SlicedSprite | null)[][]) => {
+        setSelectedSprites(newGrid)
     }
 
     const handleDragStart = (hash: string) => {
@@ -278,7 +338,9 @@ export default function ImageSlicer() {
 
     // Calculate unselected sprites
     const unselectedSprites = useMemo(() => {
-        const selectedHashes = new Set(selectedSprites.map(s => s.hash))
+        const selectedHashes = new Set(
+            selectedSprites.flat().filter(s => s !== null).map(s => s!.hash)
+        )
         return allSprites
             .filter(s => !selectedHashes.has(s.hash))
             .sort((a, b) => {
@@ -289,6 +351,10 @@ export default function ImageSlicer() {
                 return a.x - b.x
             })
     }, [allSprites, selectedSprites])
+
+    const hasSelectedSprites = useMemo(() => {
+        return selectedSprites.flat().some(s => s !== null)
+    }, [selectedSprites])
 
     return (
         <div className="image-slicer">
@@ -334,11 +400,12 @@ export default function ImageSlicer() {
                             selectedSprites={selectedSprites}
                             onReorderSprites={reorderSelectedSprites}
                             onRemoveSprite={removeFromSelected}
+                            onRemoveMultiple={removeMultipleFromSelected}
                         />
-                        {selectedSprites.length > 0 && (
+                        {hasSelectedSprites && (
                             <div className="export-section">
                                 <ActionButtons
-                                    hasSprites={selectedSprites.length > 0}
+                                    hasSprites={hasSelectedSprites}
                                     onExport={exportSpriteSheet}
                                 />
                             </div>
