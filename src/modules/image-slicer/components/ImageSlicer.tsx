@@ -49,8 +49,26 @@ async function sliceImage(file: File): Promise<SlicedSprite[]> {
                             0, 0, tileSize, tileSize
                         )
 
-                        // Get image data for hashing
+                        // Get image data and convert black pixels to transparent
                         const imageData = ctx.getImageData(0, 0, tileSize, tileSize)
+                        const data = imageData.data
+
+                        // Convert black (#000000) pixels to fully transparent
+                        for (let i = 0; i < data.length; i += 4) {
+                            const r = data[i]
+                            const g = data[i + 1]
+                            const b = data[i + 2]
+
+                            // If pixel is black, make it transparent
+                            if (r === 0 && g === 0 && b === 0) {
+                                data[i + 3] = 0 // Set alpha to 0
+                            }
+                        }
+
+                        // Put the modified image data back
+                        ctx.putImageData(imageData, 0, 0)
+
+                        // Hash the processed image
                         const hash = await hashImageData(imageData)
 
                         // Convert to PNG24 (PNG with alpha)
